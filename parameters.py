@@ -2,6 +2,8 @@
 Every real world object modeled in this program is defined by a series of attributes and values.  This class creates an easy way to add and manage these
 attributes, without created hand tailored code to modify and set it, the variable name is fed into the class and it exposes an interface
 to change, record, validate input
+
+Change to a pandas dataframe, for each parameters, parameters.
 """
 class Parameters(): #Holds values that define the dimensions and properties of anything, allows updates and saves old values
 	def __init__(self, dict):
@@ -60,7 +62,6 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 			self.p[key] = (value,desc,False)
 			ret = value
 		except KeyError:
-			print("{} not a valid parameter ".format(key))
 			return None
 		return ret
 
@@ -89,7 +90,6 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 				print("Changing boolean parameter type")
 			self.p[index] = (newVal, description) #And now lets put it into master dictionary
 		except Exception as e:
-			print("{}, cancelling parameter change.".format(e))
 			raise Exception("Cancelling change")
 
 	def toCSV(self):
@@ -129,6 +129,17 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 		return ret
 	
 	def isUpdated(self, key):
-		ret = self.p[key][2]
+		try:
+			ret = self.p[key][2]
+		except:
+			ret = False
 		return ret
+	
+	def parameter_processed(self, key):
+		try:
+			self.p[key][2] = False
+			ret = True
+		except:
+			ret = False
+		return ret		
 

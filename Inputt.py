@@ -3,7 +3,8 @@ import time
 from parameters import Parameters
 from guiThread import GUIThread
 import numpy as np
-from globals import threads, globals
+from Globals import Globals
+from workerthreads import threads
 import math
 from PIL import Image
 import os
@@ -27,8 +28,11 @@ class Inputt():
 		self.promptText = "" #the bottom line prompt prompt> output
 		self.functionReturn = None #After the user selects a function, this is its return value, set it back to None after its displayed
 		self.menuSelections = [] #A list of all menu options available, set up by the print menu function
-		self.gui = GUIThread(80,25) #Start running the GUI, and update it as necessary
+		self.gui = GUIThread("GUI", []) #Start running the GUI, and update it as necessary
+
+	def startGui(self):
 		self.gui.start()
+
 	def __str__(self):
 		ret = ""
 		if self.keydown:
@@ -52,7 +56,6 @@ class Inputt():
 		self.listener = Listener(on_press=self.on_press,on_release=self.on_release)
 		self.listener.start() #start the keyboard listener thread
 		self.active = True
-		print("Keyboard listening ON")
 	def stop(self): #Stop the listener thread
 		try:
 			self.active = False
@@ -60,7 +63,6 @@ class Inputt():
 			self.listener.stop()
 		except Exception: #In case its called when the thread is already gone
 			pass
-		print("Keyboard listener OFF")
 	def on_press(self, key):
 		#if self.keydown == True: #Want to avoid long presses for one touch processing
 		#	return
@@ -68,10 +70,8 @@ class Inputt():
 		if key == Key.enter:
 			#Check if this is a menu selection
 			if self.output in self.menuSelections:
-				print("Menu option {} selected".format(self.output))
 				self.menuLevel.append(self.output)	#Advance into this menu option
 			self.lines.append(self.output)
-			print("Line {} entered".format(self.output))
 			self.output = ""
 			self.enterLine = True #Flag a line of input is ready, flip it back once processed
 			return
@@ -180,7 +180,7 @@ class Inputt():
 		self.gui.updatingBuffer(bufferUpdating = True) #Set the drawing and buffer locks
 		self.deleteMenuPath(self.menuLevel) #Clear the menu options below it must be dynamic
 		self.oneTouchKeys = [] #We'll remake the list while dynamically creating the menu entry
-		self.gui.clearText() #Prep the screen for new things
+		#self.gui.clearText() #Prep the screen for new things
 
 		typer = str(type(items)) #Multiple data types can be enumerated, but lets make one function to handle them all
 		#first make the selection names based on the object type
@@ -208,7 +208,7 @@ class Inputt():
 				rowcount += self.gui.addToBuffer(indent, line_number, val)
 
 		if typer == "<class 'list'>":
-			rowcount = 0
+			rowcount = 1 #Add one for the top row showing the menu title
 			for index, i in enumerate(items, 1):
 				added = self.menuLevel.copy()
 				added.append(str(index)) #Make the new, dynamic menu entry, starting at 1
@@ -221,8 +221,8 @@ class Inputt():
 		self.output = "" #Prep the indicator variables to accept new input and prepare to select from the list
 		self.printMenu() #Display it and set one touch keys, if less than 10 items being displayed
 		title = self.getTitle()
-		self.gui.setOutputPane(["Viewing {}".format(title)])
-		self.gui.updatingBuffer(False) #We know this thread is done updating the buffer
+		self.gui.setOutputPane(["Viewing {}".format(title), "Enunmeration selection {}".format(self.menuLevel)])
+		#self.gui.updatingBuffer(False) #We know this thread is done updating the buffer
 		selection = self.nextLine() #And then get the users selection
 		ret = self.outputProcessed()
 		if ret[0] == 'Returning to menu level':
@@ -239,19 +239,12 @@ class Inputt():
 		self.goUpOneLevel()
 		ret = ["Returning to menu level".format(self.menuLevel)]
 		#Need to check the menu level and activate outputvisual for running threads, if we go to the level that spawned the thread
-		
-		runningThreads = threads.iterable()
-		for rt in runningThreads:
-			threadMenuLevel = rt.P.get("Visualization menu level") #Check this running thread and if we just went to its creation menu level restart the visualization output
-			if threadMenuLevel == self.menuLevel:
-				rt.outputVisual = True #Enable it
-			else:
-				rt.outputvisual = False
-
 		return ret
+	
 	def printMenu(self): 
 		#Prints the menu and calculates metrics like selection options and screen size while doing it
 		self.gui.updatingBuffer(bufferUpdating = True) #Set the drawing and buffer locks
+		self.gui.clearText()
 		escapeOption = self.menuLevel.copy()
 		escapeOption.append("Escape") #So hitting the Escape key brings us one menu level, escaping up
 		self.addMenuItem(escapeOption,"Go up one level", self.Escape) #Put in the 
@@ -260,7 +253,6 @@ class Inputt():
 		title = str(self.menuLevel) + ": " + str(self.menuItems[tuple(self.menuLevel)][0]) #Level: Level's name
 		x = int((self.gui.numberOfColumns - len(title))/2)
 		self.gui.addToBuffer(x,0,title)
-		print(title)
 		#Count the size of the printed menu and resize it for the printed menu
 		nameLength = 80
 		#Calculate the size of the menu and prompt
@@ -281,14 +273,14 @@ class Inputt():
 				if typer == "<class 'numpy.ndarray'>":
 					i = Image.fromarray(i)
 					typer =  str(type(i))
-				if typer == "<class 'PIL.Image.Image'>": #Its an image
+				elif typer == "<class 'PIL.Image.Image'>": #Its an image
 					size = name.size
 					y += 2 #Because Im using thumbnails defined as twice row size for menu selection
-				if typer == "<class 'str'>":
+				else: #Its a string or something else that will be converted to a string
+					name = str(name)
 					y += 1
 					
-				nameLength = max(len(text),nameLength) #Fix this, not quite right
-		print("Printing menu {} lines".format(y))
+				nameLength = max(len(name),nameLength) #Keep a running track of the columns in case we need to expand the window
 		#if y > self.gui.numberOfRows or nameLength > self.gui.numberOfColumns:
 		self.gui.resize(nameLength, y)
 
@@ -326,6 +318,7 @@ class Inputt():
 		#Add the prompt to the buffer
 		self.gui.addToBuffer(0, y + 1, "Select Option(1-{})".format(oneTouchCount))
 		self.gui.updatingBuffer(False) #Done writing the menu
+
 	def outputProcessed(self):
 		self.gui.updatingBuffer(bufferUpdating = True) #Set the drawing and buffer locks
 		#Lets get the last line entered by the user
@@ -358,32 +351,39 @@ class Inputt():
 		#Flag the prompt to draw the gui screen
 		if self.enterLine: #The enter key was pressed, get the last line recorded
 			return self.lines[-1]
-		self.start()
+		self.start() #Start listening for keystrokes
 		#Lets see if any running thread started from this current menu level, if so show the the threads output in the output pane
 		runningThreads = threads.iterable()
 		images = []
-		displayThread = False #Presume no thread to display
+		displayThread = False #Presume no thread to displaynd
 		for rt in runningThreads:
 			threadMenuLevel = rt.P.get("Menu Level")
-			if threadMenuLevel == self.menuLevel:
+			if threadMenuLevel == self.menuLevel and self.menuLevel != []:
 				displayThread = rt #We have a thread created at this menu level, we will display it in the output pane
 
-
+		#This loop waits for a line to be entered by the user, while its waiting if theres an active thread at this menu
+		#level it will display its output, either an image or text if no image is available
+		print("> ", end="")
 		while self.enterLine == False: #Wait for the user to type a selection
-			for rt in runningThreads:
-				threadMenuLevel = rt.P.get("Menu Level")
-				if threadMenuLevel == self.menuLevel:
-					displayThread = rt #We have a thread created at this menu level, we will display it in the output pane
-				else:
-					displayThread = False
 			if displayThread:
 				imageUpdated = displayThread.P.isUpdated("outputImage") #Dont rewrite it unless theres a new image to put in
 				if imageUpdated:
-					images.clear()
-					img = rt.getOutputImage()
-					images.append(img)
-					self.gui.setOutputPane(images)
-		self.stop() 
+					img = displayThread.getOutputImage()
+					threadOutput = ["Thread {}".format(displayThread), img]
+					self.gui.setOutputPane(threadOutput)
+					self.status()
+					self.gui.clearText() #Prep the text array for a new set of characters
+					self.printMenu() #Add the menu into the buffer array
+
+				elif displayThread.P.isUpdated("output_Text"):
+					text = displayThread.get_output_text()
+					thread_Output = [text]
+					self.gui.setOutputPane(thread_Output)
+					self.status()
+					self.gui.clearText() #Prep the text array for a new set of characters
+					self.printMenu() #Add the menu into the buffer array
+		print("")
+		self.stop() #Turn off the listener
 		return self.lines[-1] #Otherwise nothing
 		
 	def getFileName(self, default, ext = ""): #Gets a filename from the user, using enter to select the default string
@@ -489,3 +489,20 @@ class Inputt():
 
 	def getlastOutput(self):
 		return self.gui.outputList
+	
+	"""
+	Status updates the menu system showing relevant & concise state data to the user
+	"""
+	def status(self):
+		db = Globals.get("db")
+		self.updateMenuItem([], "Database settings-{}".format(len(db.commands)))
+
+		try:
+			Inserting = threads.get("Insert")
+			if Inserting.stopped() == False:
+				onoff = "OFF"
+			else:
+				onoff = "ON"
+			self.updateMenuItem(['2'], "Inserting is {} {}".format(onoff,Inserting.count))
+		except Exception as e:
+			self.updateMenuItem(['2'], "Inserting is OFF 0")

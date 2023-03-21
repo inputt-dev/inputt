@@ -3,8 +3,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import datetime
 import cv2
-from globals import threads
-from workerthreads import workerThread
+from workerthreads import workerThread, threads
 import time
 import math 
 import string
@@ -25,21 +24,20 @@ below is an output section, or set to monitor
 """
 class GUIThread(workerThread): #Run the gui in a separate thread
 	def __init__(self, *args, **kwargs):
-		super(GUIThread, self).__init__("GUI", **kwargs)
-		columns = args[0]
-		rows = args[1]
+		super(GUIThread, self).__init__(*args, **kwargs)
+		columns = 80
+		rows = 25
 		self._stop = threading.Event()
 		self.running = True
-		self.promptColor = (255,255,255)
-		self.menuColor = (255,255,255)
-		self.backgroundColor = (0,0,32)
+		self.bg_color = (0,0,0)
+		self.fg_color = (255,255,255)
 		self.numberOfColumns = columns
 		self.numberOfRows = rows
 		self.divideLineInputVOutput = rows #We'll start the division between inputt&prompt from output to be the initial row size with output to put under it
-		self.fontSize = 20
-		self.resolution = (self.fontSize * self.numberOfColumns,self.fontSize * self.numberOfRows)
-		self.img = Image.new("RGB", self.resolution, color = (67,98,122))
+		#self.resolution = (self.font_size * self.numberOfColumns,self.font_size * self.numberOfRows)
+		#self.img = Image.new("RGB", self.resolution, color = (67,98,122))
 		self.setFontSize(19)
+		self.resize(80,25)
 		self.screenRefreshes = 0
 		curr_dt = datetime.datetime.now()
 		timeStamp = int(round(curr_dt.timestamp()))
@@ -56,6 +54,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		self.screenDrawing = False #We're not drawing the screen right nowpa
 		self.waitingCycles = 0 #Count how many buffer updates are sent while the screen is drawing
 		self.bufferUpdates = {} #buffer the text buffer for updates while its drawing the screen
+		self.minimum_Width = 80 #The mininum number of columns
 
 	def setOutputPane(self, items):
 		if items == []: #No input means just the menu is printing
@@ -92,8 +91,8 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 				items[index] = i
 			if typer == "<class 'PIL.Image.Image'>": #Its an image
 				size = i.size
-				x = math.ceil(size[0] / self.fontSize)
-				y = math.ceil(size[1] / self.fontSize)
+				x = math.ceil(size[0] / self.font_size)
+				y = math.ceil(size[1] / self.font_size)
 				countOfColumns = max(x, countOfColumns)
 				countOfRows += y
 
@@ -105,52 +104,38 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		#First calculate the dimensions that the output pane needs
 		rowCount = self.divideLineInputVOutput
 		for i in items:
-			self.addToBuffer(0,rowCount,i)
+			rowCount += self.addToBuffer(0,rowCount,i) #Need to increment the rowCount to add the number of rows this item has
 
 		self.outputList = items
 		self.updatingBuffer(False) #Done now draw the screen
 
 	def __str__(self):
-		ret = "CLI: Width {}, Height{}\n".format(self.numberOfColumns, self.numberOfRows)
-		ret += "Font Size: {}\n".format(self.fontSize)
-		ret += "Screen size(pixel){}\n".format(self.resolution)
+		#ret = str(threads)
+		ret = "GUIThread {}x{}x{}\n".format(self.numberOfColumns, self.numberOfRows, self.font_size)
 		return ret
 
 	def resize(self, cols, rows): #Resize the array but keep the existing data
-		#self.screen = np.resize(self.screen, (cols,rows), )
-		new_arr = np.zeros((cols,rows), dtype = np.uint8)
+		new_arr = np.zeros((cols,rows), dtype = (np.uint8, 7))
 		#write in the old array
 		for r in range(0,rows):
 			for c in range(0,cols):
 				try:
 					new_arr[c][r] = self.screen[c][r]
 				except:
-					pass #If its out of bounds
+					new_arr[c][r] = (0,self.fg_color[0],self.fg_color[1],self.fg_color[2],self.bg_color[0],self.bg_color[1],self.bg_color[2])
 		self.screen = new_arr
 		self.numberOfColumns = cols
 		self.numberOfRows = rows
-		self.resolution = (self.fontSize * self.numberOfColumns,self.fontSize * self.numberOfRows)
-		self.img = Image.new("RGB", self.resolution, color = self.backgroundColor)
-
-
-	def setSize(self, newSize): #Change the text buffer array without losing any data
-		self.numberOfColumns = newSize[0]
-		self.numberOfRows = newSize[1]
-		self.resolution = (self.fontSize * self.numberOfColumns,self.fontSize * self.numberOfRows)
-		self.img = Image.new("RGB", self.resolution, color = self.backgroundColor)
+		self.resolution = (self.font_size * self.numberOfColumns,self.font_size * self.numberOfRows)
+		self.img = Image.new("RGB", self.resolution, color = self.bg_color)
 
 	def setFontSize(self, newSize):
-		self.fontSize = newSize
-		self.font = ImageFont.truetype(r'.\fonts\Courier Prime\Courier Prime.ttf', self.fontSize + 1)
-		self.resetScreens()
-
-	def resetScreens(self):
-		self.resolution = (self.fontSize * self.numberOfColumns,self.fontSize * self.numberOfRows)
-		self.img = Image.new("RGB", self.resolution, color = self.backgroundColor)
-		self.clearText()
+		self.font_size = newSize
+		self.font = ImageFont.truetype(r'.\fonts\Courier Prime\Courier Prime.ttf', self.font_size + 1)
 
 	def clearText(self):
-		self.screen = np.zeros((self.numberOfColumns,self.numberOfRows), dtype = np.uint8)
+		self.screen = []
+		self.resize(self.numberOfColumns, self.numberOfRows)
 		self.images = {}
 		self.bufferUpdated = True
 
@@ -161,44 +146,48 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 			return None
 
 		self.drawingScreen(screenDrawing = True) #Set the drawing and buffer locks
-		print("Drawing screen {}".format(self.screenRefreshes))
 		#Once the screen buffer is constructed, print it out one character at a time after going up the screen height lines
 		row = 0
 		column = 0
-		#self.img = Image.new("RGB", self.resolution, color = self.backgroundColor)
-		self.img.paste( self.backgroundColor, [0,0,self.img.size[0],self.img.size[1]]) #Clear out the old image
+		self.img.paste( self.bg_color, [0,0,self.img.size[0],self.img.size[1]]) #Clear out the old image
 		draw = ImageDraw.Draw(self.img)
-		# specified font size
+		# specified font sizee
 		#Print out a running fps account
 		curr_dt = datetime.datetime.now()
 		timeStamp = int(round(curr_dt.timestamp()))
 		self.screenRefreshes += 1
-		fps = "fps {}".format(self.screenRefreshes / (timeStamp - self.startTime))
-		self.addToBuffer(self.numberOfColumns - len(fps),0,fps)
+		#fps = "fps {}".format(self.screenRefreshes / (timeStamp - self.startTime))
+		#self.addToBuffer(self.numberOfColumns - len(fps),0,fps)
 		#Print out the waiting Cycles
-		screenDraws = "Buffer updates during screen drawing: {}".format(self.waitingCycles)
-		self.addToBuffer(self.numberOfColumns - len(screenDraws),1,screenDraws)
+		#screenDraws = "Buffer updates during screen drawing: {}".format(self.waitingCycles)
+		#self.addToBuffer(self.numberOfColumns - len(screenDraws),1,screenDraws)
 
 		while row < self.numberOfRows:
 			while column < self.numberOfColumns:
-				character = self.screen[column][row] #Get the ascii number then change it to a character
+				pixel = tuple(self.screen[column][row])
+				fg_color = '#%02x%02x%02x' % (pixel[1],pixel[2],pixel[3])
+				fg_color = (255,0,0)
+				bg_color = '#%02x%02x%02x' % (pixel[4],pixel[5],pixel[6])
+				bg_color = (0,0,255) #b,g,r
+				character = pixel[0]
 				if character == 0 or character == 32:
 					column +=1 
 					continue
-				surfaceY = row * self.fontSize
-				surfaceX = column * self.fontSize
-  
-				# drawing text size
-				color = self.screen[column][row]
-				draw.text((surfaceX, surfaceY), chr(character), font = self.font, align ="center", color = self.text_color)
+				if bg_color != self.bg_color:
+					y1 = row * self.font_size
+					x1 = column * self.font_size
+					x2 = x1 + self.font_size
+					y2 = y1 + self.font_size
+					draw.rectangle((x1,y1,x2,y2), fill = bg_color)
+				draw.text((x1, y1), chr(character), font = self.font, align ="center", color = fg_color)
 				column +=1
 			row +=1 #Advance to next row
 			column = 0
 
 		for (x,y), image in self.images.items(): #Paste in the images on this screen
 			#Start pasting in the images 
-			x = self.fontSize * x
-			y = self.fontSize * y
+			x = self.font_size * x
+			y = self.font_size * y
 			self.img.paste(image, (x,y))
 
 		#return self.numpyImage
@@ -208,7 +197,6 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		for key,value in self.bufferUpdates.items(): #If its done drawing now add the buffered updates
 			(t,a,c) = value
 			self.addToBuffer(t,a,c)
-		print("{} buffer updates recorded while screen drawing".format(key))
 		self.bufferUpdated = False #Definitely nothing new now, wait for the next keypress
 		self.bufferUpdates = {}
 		return img2
@@ -225,7 +213,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 			self.images[(x,y)] = image
 		
 		size = image.size
-		y = math.ceil(size[1] / self.fontSize)
+		y = math.ceil(size[1] / self.font_size)
 		self.bufferUpdated = True
 		return y
 		
@@ -233,7 +221,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		self.images = {}
 		self.bufferUpdated = True
 
-	def addToBuffer(self, x, y, text): #Need to merge addtobuffer and addimage
+	def addToBuffer(self, x, y, text, fg_color = None, bg_color = None): #Need to merge addtobuffer and addimage
 		#At position x,y add the text 
 		#TODO text will be a numpy array for 2d text boxes
 		
@@ -244,7 +232,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 			#Still need to return the amount of lines it would've had
 			if typer == "<class 'PIL.Image.Image'>":
 				size = text.size
-				numLines = math.ceil(size[1] / self.fontSize)
+				numLines = math.ceil(size[1] / self.font_size)
 			else:
 				text = str(text) #Just force everything into strings no matter what is sent to be rendered
 				numLines = len(text.split("\n"))
@@ -296,12 +284,12 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 			if frame is None:
 				pass
 			else:
-				cv2.imshow("CLI", frame)
+				cv2.imshow("Inputt", frame)
 			cv2.waitKey(1)
-		cv2.destroyWindow("CLI")
+		cv2.destroyWindow("Inputt")
 
 	def getImageThumbnailSize(self):
-		ret = (self.fontSize * 2, self.fontSize *2) #Maybe two line max for images is nice?
+		ret = (self.font_size * 2, self.font_size *2) #Maybe two line max for images is nice?
 		return ret
 
 	def updatingBuffer(self, bufferUpdating = None):
@@ -309,7 +297,6 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 			return self.bufferUpdating
 		if bufferUpdating == True or bufferUpdating == False: #Set the buffer to updating
 			self.bufferUpdating = bufferUpdating
-			print("Buffer is currently being updated:{}\nBuffer has an update: {}".format(self.bufferUpdating, self.bufferUpdated))
 			return self.bufferUpdating
 		return self.bufferUpdating
 
@@ -318,6 +305,5 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 			return self.screenDrawing
 		if screenDrawing == True or screenDrawing == False: #Set the buffer to updating
 			self.screenDrawing = screenDrawing
-			print("Screen drawing change {}".format(self.screenDrawing))
 			return self.screenDrawing
 		return self.screenDrawing #Bad input just output the existing value

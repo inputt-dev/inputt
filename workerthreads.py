@@ -1,9 +1,5 @@
 import threading
 from parameters import Parameters
-from DB_utilities import bbdb
-from imutils.video import FileVideoStream
-from globals import threads, globals
-import cv2
 import time
 import datetime
 stopWatchStartTime = 0
@@ -17,25 +13,26 @@ def stopWatchStop():
 	stopWatchEndTime = curr_dt.timestamp()
 	return stopWatchEndTime - stopWatchStartTime
 
+threads = Parameters({}) #A parameters object to hold and catalog all threads being created
+
 class workerThread(threading.Thread):
-	def __init__(self, *args, **kwargs):
+	def __init__(self, *args, **kwargs): #name, menuLevel
 		super(workerThread, self).__init__(None, **kwargs)
 		self._stop = threading.Event()
 		P = {}
 		self.P = Parameters(P)
 		self.P.set("outputImage", None)
 		self.P.setDescription("outputImage", "What image is the thread outputting")
-		inputt = globals.get("inputt")
-		if inputt is not None:
-			menuLevel = inputt.menuLevel
-			self.P.set("Menu Level", menuLevel)
-		else:
-			self.P.set("Menu Level", [])
-
 		self.outputVisual = False #For other threads to know and act upon
 		self.name = args[0]
+		self.P.set("Menu Level", args[1])
 		threads.set(self.name, self) #Add it to the threads globals
-
+		#Variables to track changes to the database and buffer inputs while the thread is processing
+		self.waiting_cycles = 0
+		self.update_buffer = {}
+		self.is_processing = False
+		self.is_updating = False
+	
 	# function using _stop function
 	def stop(self):
 		self._stop.set()
@@ -53,99 +50,35 @@ class workerThread(threading.Thread):
 			ret += "{} running\n".format(self.name)
 		return str(self.P)
 
+	#True if the thread has new information
 	def updated(self):
 		return self.P.updated
 	
+	#Run once the update is processed
 	def updateProcessed(self):
 		self.P.updated = False
 	
 	def getOutputImage(self):
 		img = self.P.get("outputImage")
+		self.P.parameter_processed("outputImage")
 		return img
+	
+	def get_output_text(self):
+		img = self.P.get("output_Text")
+		self.P.parameter_processed("output_Text")
+		return img
+	
+	def updating(self, updating = None):
+		if updating == None: #Not setting it, just requesting if the updating the buffer 
+			return self.is_updating
+		if updating == True or updating == False: #Set the buffer to updating
+			self.is_updating = updating
+			return self.is_updating
+		return self.is_updating
 
-class PlayBackThread(workerThread):
-	def __init__(self, *args, **kwargs):
-		super(PlayBackThread, self).__init__("Playback Thread {}".format(args[0]), **kwargs)
-		self._stop = threading.Event()
-		self.P.set("Session", args[0])
-		self.P.set("DB File Name", args[1])
-		self.P.set("Total Frames", 0)
-		self.files = [] #a list of video files
-		self.totalFrames = 0
-		self.frameIndex = 0
-		self.name = "Playback Thread {}".format(self.P.get("Session"))
-		self.outputVisual = True
-		#self.P.set("outputImage", "No image loaded")
-		self.P.updated = False #We've processed these parameter updates
-
-	def __str__(self):
-		return self.name
-
-	# function using _stop function
-	def stop(self):
-		super(PlayBackThread, self).stop()
-		self._stop.set()
-		self.outputVisual = False
- 
-	def stopped(self):
-		return self._stop.isSet()
-
-	def run(self):
-		P = self.P
-		path = P.get("Session")
-		db = bbdb(P.get("DB File Name"))
-		#get the list of video files from this session and play them into a window
-		files = db.getSessionFiles(path) #Now we have a list of video files, lets play the video files in sequence
-		self.totalFrames = db.getTotalFrameCount(path)
-		frameIndex = 0
-		stopWatchStart()
-		frametime = stopWatchStop()
-		for f in files:
-			P.set("Frame", frameIndex)
-			P.set("File", f)
-			fvs = FileVideoStream(f).start()
-			#Start the video loop
-			ret = fvs.more()
-			frame = fvs.read() #Read in the next frame image
-			frameIndex = 0
-			while ret is True:
-				stopWatchStart()
-				if frame is not None:
-					#cv2.imshow(windowTitle, frame)
-					#cv2.waitKey(1)
-					if self.outputVisual:
-						self.P.set("outputImage", frame) #Set an output image for other threads to display as needed
-						#frametime = stopWatchStop()
-						#time.sleep(max(0.3, 1 - frametime))
-						#cv2.imshow("Sky Scanner Playback", frame)
-						#cv2.waitKey(1)
-					else:
-						self.P.set("outputImage", None)
-					frameIndex += 1
-					self.P.set("Frame Recorded", frameIndex)
-				ret = fvs.more()
-				if ret is False:
-					break
-				frame = fvs.read() #Read in the next frame image
-			#After looping video frames, kill the window
-			#cv2.destroyWindow("Sky Scanner Playback")
-		self.stop()
-		print("End of files")
-
-	def read(self): #Gets the next frame from the camera session
-		#First lets check if we're waiting on it
-		while self.P.updated == False and self.stopped() == False:
-			time.sleep(0.05)
-
-		#Now we're either stopped or the parameters have updated
-		if self.stopped(): #Nothing to read if the thread is off
-			return None
-		
-		#Otherwise get the frame from outputimage parameter
-		if self.P.isUpdated("outputImage"):
-			ret = self.P.get("outputImage")
-			return ret
-		
-			
-
-
+	def processing(self, processing = None):
+		if processing == None: #Not setting it, just requesting if the updating the buffer 
+			return self.is_processing
+		if processing == True or processing == False: #Set the buffer to updating
+			self.is_processing = processing
+		return self.is_processing
