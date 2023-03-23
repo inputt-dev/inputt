@@ -72,26 +72,7 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 			print("{} not in the dictionary. Nothing changed".format(attribute))
 		except Exception:
 			print("Exception encountered add to variable list attribute")
-
-	def changeParameters(self):
-		index = enumerateAndSelect(self.p) #List the value, prompt the user for a selection returns the index for the dictionary
-		parameterValue = self.p[index][0]
-		description = self.p[index][1]
-		parameterType = str(type(parameterValue))
-		try:
-			#List out the parameters and let the user select some to change
-			if parameterType == "<class 'int'>":
-				newVal = getInteger("Enter new value[{}]: ".format(parameterValue), 0, -1000000,1000000)
-			if parameterType == "<class 'datetime.date'>":
-				newVal = getDate("Enter new date YYYY-MM-DD.", parameterValue)
-			if parameterType == "<class 'float'>":
-				newVal = float(input("Enter new value[{}]: ".format(parameterValue)))
-			if parameterType == "<class 'boolean'>":
-				print("Changing boolean parameter type")
-			self.p[index] = (newVal, description) #And now lets put it into master dictionary
-		except Exception as e:
-			raise Exception("Cancelling change")
-
+			
 	def toCSV(self):
 		ret = ""
 		for k,v in self.p.items():

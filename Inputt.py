@@ -25,10 +25,10 @@ class Inputt():
 		self.endProgram = False #Keep running till the user escapes to the end
 		self.statusVariables = {} #{"name": "value"}
 		self.pressed = None
-		self.promptText = "" #the bottom line prompt prompt> output
 		self.functionReturn = None #After the user selects a function, this is its return value, set it back to None after its displayed
 		self.menuSelections = [] #A list of all menu options available, set up by the print menu function
 		self.gui = GUIThread("GUI", []) #Start running the GUI, and update it as necessary
+		self.set_prompt("") #The default prompt
 
 	def startGui(self):
 		self.gui.start()
@@ -95,12 +95,13 @@ class Inputt():
 				return #Dont backspace no input, it'll erase things off the field of input
 			self.output = self.output[:-1] #chop off the end of the output string
 			print("\b \b", end = "") #Backspace erase and backspace again to reset the cursor
+			self.updatePrompt(self.output)
 			return
 		#Now lets separate alphanumeric keys from others
 		try:
 			self.output += key.char
 			print(key.char, end = "") #Echo the keypress
-			self.updatePrompt() #Update the buffer for the keypress
+			self.updatePrompt(self.output)
 		except Exception as e:
 			if key == Key.left:
 				self.output = "<-"
@@ -124,7 +125,6 @@ class Inputt():
 			name = text[0]
 			ret += "{}. {}\n".format(menu, name)
 		return ret
-
 	def getTitle(self):
 		#Return the title of the current menu level
 		ret = self.menuItems[tuple(self.menuLevel)][0]
@@ -219,7 +219,7 @@ class Inputt():
 
 		self.enterLine = False
 		self.output = "" #Prep the indicator variables to accept new input and prepare to select from the list
-		self.printMenu() #Display it and set one touch keys, if less than 10 items being displayed
+		self.print_menu() #Display it and set one touch keys, if less than 10 items being displayed
 		title = self.getTitle()
 		self.gui.setOutputPane(["Viewing {}".format(title), "Enunmeration selection {}".format(self.menuLevel)])
 		#self.gui.updatingBuffer(False) #We know this thread is done updating the buffer
@@ -241,7 +241,7 @@ class Inputt():
 		#Need to check the menu level and activate outputvisual for running threads, if we go to the level that spawned the thread
 		return ret
 	
-	def printMenu(self): 
+	def print_menu(self): 
 		#Prints the menu and calculates metrics like selection options and screen size while doing it
 		self.gui.updatingBuffer(bufferUpdating = True) #Set the drawing and buffer locks
 		self.gui.clearText()
@@ -282,7 +282,8 @@ class Inputt():
 					
 				nameLength = max(len(name),nameLength) #Keep a running track of the columns in case we need to expand the window
 		#if y > self.gui.numberOfRows or nameLength > self.gui.numberOfColumns:
-		self.gui.resize(nameLength, y)
+		self.gui.divideLineInputVOutput = y + 2 #To maximize screen space for output, start output right beneath the input&prompt
+		self.gui.resize(nameLength, self.gui.divideLineInputVOutput)
 
 		#Add the items in the menu and prompt to the gui
 		y=1
@@ -314,9 +315,10 @@ class Inputt():
 	
 		if oneTouchCount > 10: #Cant type 16 for instance without onetouching 1 first so we need to disable it
 			self.oneTouchKeys = []
-		self.gui.divideLineInputVOutput = y + 3 #To maximize screen space for output, start output right beneath the input&prompt
 		#Add the prompt to the buffer
-		self.gui.addToBuffer(0, y + 1, "Select Option(1-{})".format(oneTouchCount))
+		#self.gui.addToBuffer(0, y + 1, "Select Option(1-{})".format(oneTouchCount))
+		self.set_prompt("Select Option(1-{})".format(oneTouchCount))
+		print(self.promptText)
 		self.gui.updatingBuffer(False) #Done writing the menu
 
 	def outputProcessed(self):
@@ -340,12 +342,13 @@ class Inputt():
 			while self.gui.drawingScreen():
 				pass
 			self.gui.clearText() #Prep the text array for a new set of characters
-			self.printMenu() #Add the menu into the buffer array
+			self.print_menu() #Add the menu into the buffer array
 			#Set the window size based on the output size and write in the output from the menu function
 			self.gui.setOutputPane(self.functionReturn)
 		self.enterLine = False	#Get ready for a nextline
 		self.gui.updatingBuffer(False) #Open for screen drawing now
 		return self.functionReturn #True if a function ran, false otherwise
+	
 	def nextLine(self): #returns a string the user typed or false if still checking
 		#Lets reset the interface window to sync it with the user input
 		#Flag the prompt to draw the gui screen
@@ -358,30 +361,37 @@ class Inputt():
 		displayThread = False #Presume no thread to displaynd
 		for rt in runningThreads:
 			threadMenuLevel = rt.P.get("Menu Level")
-			if threadMenuLevel == self.menuLevel and self.menuLevel != []:
+			if threadMenuLevel == self.menuLevel:
 				displayThread = rt #We have a thread created at this menu level, we will display it in the output pane
+			
 
 		#This loop waits for a line to be entered by the user, while its waiting if theres an active thread at this menu
 		#level it will display its output, either an image or text if no image is available
 		print("> ", end="")
+		db = Globals.get("db")
+		update_menu = False
+		thread_output = []
 		while self.enterLine == False: #Wait for the user to type a selection
-			if displayThread:
-				imageUpdated = displayThread.P.isUpdated("outputImage") #Dont rewrite it unless theres a new image to put in
-				if imageUpdated:
-					img = displayThread.getOutputImage()
-					threadOutput = ["Thread {}".format(displayThread), img]
-					self.gui.setOutputPane(threadOutput)
-					self.status()
-					self.gui.clearText() #Prep the text array for a new set of characters
-					self.printMenu() #Add the menu into the buffer array
-
-				elif displayThread.P.isUpdated("output_Text"):
-					text = displayThread.get_output_text()
-					thread_Output = [text]
-					self.gui.setOutputPane(thread_Output)
-					self.status()
-					self.gui.clearText() #Prep the text array for a new set of characters
-					self.printMenu() #Add the menu into the buffer array
+			#Check if any thread is updated and we're at the root menu which will show running threads
+			for rt in runningThreads:
+				if self.menuLevel == []:
+					thread_output.append(str(rt))
+				if rt.P.isUpdated("output_Text"):
+					update_menu = True
+			if displayThread.P.isUpdated("outputImage"):
+				img = displayThread.getOutputImage()
+				thread_output = ["Thread {}".format(displayThread), img]
+				update_menu = True
+			elif displayThread.P.isUpdated("output_Text"):
+				text = displayThread.get_output_text()
+				thread_output = [text]
+				update_menu = True
+			if update_menu:
+				self.status()	
+				self.print_menu() #Add the menu into the buffer array
+				self.gui.setOutputPane(thread_output)
+				thread_output = []
+				update_menu = False
 		print("")
 		self.stop() #Turn off the listener
 		return self.lines[-1] #Otherwise nothing
@@ -405,15 +415,14 @@ class Inputt():
 		return fileSelected
 
 	def getString(self, promptText):
-		self.prompt(promptText)
+		self.updatePrompt(promptText)
 		ret = self.nextLine()
 		return ret
 	def getColor(self, defaults):
-		self.prompt("Enter Red, Green, Blue for a color")
 		(dR,dG,dB) = defaults
-		red = self.getInteger("Enter red value", 0, 255, dR)
-		green = self.getInteger("Enter green value", 0, 255, dG)
-		blue = self.getInteger("Enter blue value", 0, 255, dB)
+		red = self.getInteger("red value", 0, 255, dR)
+		green = self.getInteger("green value", 0, 255, dG)
+		blue = self.getInteger("blue value", 0, 255, dB)
 		return (red, green, blue)
 	def getInteger(self, promptText, min, max, current):
 		invalid = True
@@ -421,50 +430,42 @@ class Inputt():
 		self.oneTouchKeys = []
 		self.output = ""
 		while invalid:
-			self.prompt("{}({}). {}-{}".format(promptText,current, min, max))
+			self.set_prompt("{}({}). {}-{}".format(promptText,current, min, max))
 			userInput = self.nextLine()
 			try:
 				ret = int(userInput)
 				if ret < min:
-					self.prompt("Value too low, minimum {}".format(min))
+					self.set_prompt("{} too low, minimum {}".format(ret, min))
 				elif ret > max:
-					self.prompt("Value too high, maximum {}".format(max))
+					self.set_prompt("{} too high, maximum {}".format(ret, max))
 				else:
 					invalid = False
 			except Exception as e:
-				if userInput == "Escape":
-					self.prompt("Cancelling")
-					invalid = False
-				else:
-					self.prompt("Invalid input not an integer, try again")
+				self.set_prompt("{} is not an integer.".format(userInput))
+		self.set_prompt("")
 		return ret
 
-	def updatePrompt(self):
+	#Change the prompt and user input
+	def set_prompt(self, promptText):
+		self.promptText = promptText + "> "
+		self.updatePrompt("")
+
+	def updatePrompt(self, text):
 		while self.gui.drawingScreen(): #Its drawing wait until its done then update the buffer and make it draw again
 			pass
 		self.gui.updatingBuffer(True) #Tell the gui its drawing the buffer dont do anything
+
 		#See if self.prompttext is longer than the screen, if so, write it across enough lines to show all the text
-		text = "{}> {}".format(self.promptText, self.output)
-		promptLength = len(text)
 		#Now put the text into
 		# code to pad spaces in string
 		padding_size = self.gui.numberOfColumns
-		res = text + " "*(padding_size - len(text))
+		res = self.promptText + text +" "*(padding_size - len(self.promptText + text))
 		promptRow = self.gui.divideLineInputVOutput - 1
 		self.gui.addToBuffer(0, promptRow, res)
 		self.gui.updatingBuffer(False) #No longer updating, the GUI thread is clear to redraw the screen
 
-	def prompt(self, message):
-		#Clear the one touch keys as this isnt a menu option
-		#self.oneTouchKeys = []
-		#self.lines.append(self.output) #Recheck this, is this entering in a line, or is it just updating the prompt at the bottom of the input area?
-		#self.output = ""
-		#self.enterLine = False
-		#Update the prompt message
-		self.promptText = message
-
 	def confirmAction(self, confirmText):
-		self.prompt("Press Enter to confirm {}".format(confirmText))
+		self.updatePrompt("Press Enter to confirm {}".format(confirmText))
 		line = self.nextLine()
 		if line == "":
 			return True
@@ -477,9 +478,9 @@ class Inputt():
 	def anyKey(self, message):
 		self.oneTouchKeys = ['ALL'] #A little flag to let the key press processory know to return a line with any key press
 		if message == None:
-			self.prompt("Press any key to continue")
+			self.updatePrompt("Press any key to continue")
 		else:
-			self.prompt(message)
+			self.updatePrompt(message)
 		anykey = self.nextLine()
 		self.oneTouchKeys = [] #Reset them so it doesnt keep doing anykey
 		return anykey #Might be useful to know which key was pressed
@@ -499,10 +500,29 @@ class Inputt():
 
 		try:
 			Inserting = threads.get("Insert")
-			if Inserting.stopped() == False:
+			if Inserting.stopped() == True:
 				onoff = "OFF"
 			else:
 				onoff = "ON"
 			self.updateMenuItem(['2'], "Inserting is {} {}".format(onoff,Inserting.count))
 		except Exception as e:
 			self.updateMenuItem(['2'], "Inserting is OFF 0")
+
+		try:
+			Updating = threads.get("Update")
+			if Updating.stopped() == True:
+				onoff = "OFF"
+			else:
+				onoff = "ON"
+			self.updateMenuItem(['3'], "Updating is {} {}".format(onoff,Inserting.count))
+		except Exception as e:
+			self.updateMenuItem(['3'], "Updating is OFF 0")		
+		try:
+			Deleting = threads.get("Delete")
+			if Deleting.stopped() == True:
+				onoff = "OFF"
+			else:
+				onoff = "ON"
+			self.updateMenuItem(['4'], "Deleting is {} {}".format(onoff,Inserting.count))
+		except Exception as e:
+			self.updateMenuItem(['4'], "Deleting is OFF 0")

@@ -112,6 +112,10 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 	def __str__(self):
 		#ret = str(threads)
 		ret = "GUIThread {}x{}x{}\n".format(self.numberOfColumns, self.numberOfRows, self.font_size)
+		thread_list = threads.iterable()
+		for rt in thread_list:
+			if rt.name != "GUI Thread":
+				ret += (str(rt) + "\n")
 		return ret
 
 	def resize(self, cols, rows): #Resize the array but keep the existing data
@@ -132,6 +136,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 	def setFontSize(self, newSize):
 		self.font_size = newSize
 		self.font = ImageFont.truetype(r'.\fonts\Courier Prime\Courier Prime.ttf', self.font_size + 1)
+		self.bufferUpdated = True
 
 	def clearText(self):
 		self.screen = []
@@ -153,8 +158,8 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		draw = ImageDraw.Draw(self.img)
 		# specified font sizee
 		#Print out a running fps account
-		curr_dt = datetime.datetime.now()
-		timeStamp = int(round(curr_dt.timestamp()))
+		#curr_dt = datetime.datetime.now()
+		#timeStamp = int(round(curr_dt.timestamp()))
 		self.screenRefreshes += 1
 		#fps = "fps {}".format(self.screenRefreshes / (timeStamp - self.startTime))
 		#self.addToBuffer(self.numberOfColumns - len(fps),0,fps)
@@ -165,19 +170,18 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		while row < self.numberOfRows:
 			while column < self.numberOfColumns:
 				pixel = tuple(self.screen[column][row])
-				fg_color = '#%02x%02x%02x' % (pixel[1],pixel[2],pixel[3])
-				fg_color = (255,0,0)
-				bg_color = '#%02x%02x%02x' % (pixel[4],pixel[5],pixel[6])
-				bg_color = (0,0,255) #b,g,r
+				fg_color = (pixel[1],pixel[2],pixel[3])
+				bg_color = (pixel[4],pixel[5],pixel[6])
 				character = pixel[0]
 				if character == 0 or character == 32:
 					column +=1 
 					continue
+
+				y1 = row * self.font_size
+				x1 = column * self.font_size
+				x2 = x1 + self.font_size
+				y2 = y1 + self.font_size
 				if bg_color != self.bg_color:
-					y1 = row * self.font_size
-					x1 = column * self.font_size
-					x2 = x1 + self.font_size
-					y2 = y1 + self.font_size
 					draw.rectangle((x1,y1,x2,y2), fill = bg_color)
 				draw.text((x1, y1), chr(character), font = self.font, align ="center", color = fg_color)
 				column +=1
@@ -197,7 +201,6 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		for key,value in self.bufferUpdates.items(): #If its done drawing now add the buffered updates
 			(t,a,c) = value
 			self.addToBuffer(t,a,c)
-		self.bufferUpdated = False #Definitely nothing new now, wait for the next keypress
 		self.bufferUpdates = {}
 		return img2
 
@@ -221,12 +224,10 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		self.images = {}
 		self.bufferUpdated = True
 
-	def addToBuffer(self, x, y, text, fg_color = None, bg_color = None): #Need to merge addtobuffer and addimage
-		#At position x,y add the text 
-		#TODO text will be a numpy array for 2d text boxes
-		
+	#Add a string or image to the screen buffer drawing by the thread when the locks on drawing are open
+	def addToBuffer(self, x, y, text, fg_color = False, bg_color = False): 
 		typer = str(type(text))
-		while self.drawingScreen(): #Wait until its done drawing itself
+		if self.drawingScreen(): #Wait until its done drawing itself
 			self.bufferUpdates[self.waitingCycles] = (x,y,text)
 			self.waitingCycles += 1
 			#Still need to return the amount of lines it would've had
@@ -242,8 +243,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		#Check if its an image, if so send it to addimage
 		if text is None:
 			return 0
-			
-		typer = str(type(text))
+
 		if typer == "<class 'PIL.Image.Image'>":
 			return self.addImage(x,y,text)
 		elif typer == "<class 'numpy.ndarray'>": #Convert numpy image array from cv2 to PIL image
@@ -256,6 +256,16 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 		text = list(text)
 		startX = x
 		linesAdded = 1 #Count the number of lines added to the buffer for drawing purposes
+		if fg_color is False:
+			(fr,fg,fb) = self.fg_color
+		else:
+			(fr,fg,fb) = fg_color
+
+		if bg_color is False:
+			(br,bg,bb) = self.bg_color
+		else:
+			(br,bg,bb) = bg_color
+
 		while counter < length:
 			character = ord(text[counter])
 			if character == 10:
@@ -263,7 +273,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 				x = startX
 				linesAdded += 1
 			try:
-				self.screen[x][y] = character
+				self.screen[x][y] = (character,fr,fg,fb,br,bg,bb)
 			except Exception as e:
 				pass #Just in case its out of bounds 
 			counter += 1
@@ -285,6 +295,7 @@ class GUIThread(workerThread): #Run the gui in a separate thread
 				pass
 			else:
 				cv2.imshow("Inputt", frame)
+				self.bufferUpdated = False #Definitely nothing new now, wait for the next keypress
 			cv2.waitKey(1)
 		cv2.destroyWindow("Inputt")
 

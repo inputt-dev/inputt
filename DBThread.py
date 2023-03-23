@@ -20,6 +20,7 @@ class DB():
 		self.update_buffer = {}
 		self.is_processing = False
 		self.is_updating = False
+		self.commands_added = 0
 
 	def __str__(self):
 		if self.stopped():
@@ -33,9 +34,9 @@ class DB():
 	def addCommand(self, sql, values = None):
 		while self.processing():
 			pass  #Wait for processing to finish
-		
+		self.commands_added += 1
 		self.commands.append((sql, values))
-		return len(self.commands) - 1
+		return self.commands_added - 1
 	
 	#Get the result of the sql command via index number, but may need to wait until its available.
 	def result(self, index):
@@ -50,13 +51,16 @@ class DB():
 	def flush_command_buffer(self):
 		if len(self.commands) == 0:
 			return
+		while self.processing(): 
+			pass
+
 		self.processing(True)
 		db = sqlite3.connect(self.DB_File_Path)
 		for (sql_query,values) in self.commands:
 			type = sql_query.split(" ")[0]
 			if type == "SELECT":
 				df = pd.read_sql_query(sql_query, db)
-			elif type == "INSERT" or type == "UPDATE":
+			elif type == "INSERT" or type == "UPDATE" or type == "DELETE":
 				df = db.execute(sql_query, values)
 				df = values
 			self.results.update({self.commands_Completed:df})
@@ -69,17 +73,16 @@ class DB():
 	
 	def select_all(self):
 		index = self.addCommand("SELECT * FROM TEST")
-		return self.result(index)
+		return self.get_result(index)
 	
 	#Returns random values for the test table
 	def generate_random_record(self):
 		id = random.randrange(0, 65536)
 		text_length = random.randrange(4,16)
-		choices = ['g','h','t','c']
 		name = ""
 		counter = 0
 		while counter < text_length:
-			name += random.choices(choices)[0]
+			name += chr(random.randrange(0,255))
 			counter +=1
 		blob_length = random.randrange(5,25)
 		blob = random.randbytes(blob_length)
