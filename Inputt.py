@@ -136,7 +136,7 @@ class Inputt():
 		except Exception as e:
 			print("Inputt error {}".format(e))
 			print(self)		
-	def addMenuItem(self, id, name, func):
+	def add_menu_item(self, id, name, func):
 		#id = menu index, ie 1. or 1.1, 4.1, 4.2 etc
 		#1. Option 1 = [1]
 		#2. heading 1 = [2]
@@ -192,7 +192,7 @@ class Inputt():
 				added.append(str(index)) #Make the new, dynamic menu entry, starting at 1
 				name = str(i)
 				func = self.enumerationSelection(str(items.get(ParametersList[index - 1]))) #This is in a list going into another list FIX
-				self.addMenuItem(added, name, func)
+				self.add_menu_item(added, name, func)
 
 		if typer == "<class 'dict'>":
 			rowcount = 0
@@ -202,7 +202,7 @@ class Inputt():
 				added.append(str(index)) #Make the new, dynamic menu entry, starting at 1
 				func = self.enumerationSelection(key)
 				menuText = "{}".format(key)
-				self.addMenuItem(added, menuText, func)
+				self.add_menu_item(added, menuText, func)
 				indent = len(menuText) + 3
 				line_number = rowcount
 				rowcount += self.gui.addToBuffer(indent, line_number, val)
@@ -215,7 +215,7 @@ class Inputt():
 				name = items[index - 1] #Because we started from 1 but lists start from zero
 				rowcount += self.gui.addToBuffer(0,rowcount,i)
 				func = self.enumerationSelection(i)
-				self.addMenuItem(added, name, func)
+				self.add_menu_item(added, name, func)
 
 		self.enterLine = False
 		self.output = "" #Prep the indicator variables to accept new input and prepare to select from the list
@@ -224,7 +224,7 @@ class Inputt():
 		self.gui.setOutputPane(["Viewing {}".format(title), "Enunmeration selection {}".format(self.menuLevel)])
 		#self.gui.updatingBuffer(False) #We know this thread is done updating the buffer
 		selection = self.nextLine() #And then get the users selection
-		ret = self.outputProcessed()
+		ret = self.process_menulevel()
 		if ret[0] == 'Returning to menu level':
 			return False
 		return ret
@@ -247,7 +247,7 @@ class Inputt():
 		self.gui.clearText()
 		escapeOption = self.menuLevel.copy()
 		escapeOption.append("Escape") #So hitting the Escape key brings us one menu level, escaping up
-		self.addMenuItem(escapeOption,"Go up one level", self.Escape) #Put in the 
+		self.add_menu_item(escapeOption,"Go up one level", self.Escape) #Put in the 
 		oneTouchCount = 0 #If its above 10 we need to cancel one touch keys
 		y = 1 #Top row is for menu id status, count the rows needed to display the menu
 		title = str(self.menuLevel) + ": " + str(self.menuItems[tuple(self.menuLevel)][0]) #Level: Level's name
@@ -320,8 +320,14 @@ class Inputt():
 		self.set_prompt("Select Option(1-{})".format(oneTouchCount))
 		print(self.promptText)
 		self.gui.updatingBuffer(False) #Done writing the menu
+	def stop_threads(self):
+		#Shut down the running threads
+		runningThreads = threads.iterable()
+		for rt in runningThreads:
+			rt.stop()
 
-	def outputProcessed(self):
+
+	def process_menulevel(self):
 		self.gui.updatingBuffer(bufferUpdating = True) #Set the drawing and buffer locks
 		#Lets get the last line entered by the user
 		lastLineEntered = self.lines[-1]
@@ -378,20 +384,21 @@ class Inputt():
 					thread_output.append(str(rt))
 				if rt.P.isUpdated("output_Text"):
 					update_menu = True
-			if displayThread.P.isUpdated("outputImage"):
-				img = displayThread.getOutputImage()
-				thread_output = ["Thread {}".format(displayThread), img]
-				update_menu = True
-			elif displayThread.P.isUpdated("output_Text"):
-				text = displayThread.get_output_text()
-				thread_output = [text]
-				update_menu = True
+			if displayThread:
+				if displayThread.P.isUpdated("outputImage"):
+					img = displayThread.getOutputImage()
+					thread_output = ["Thread {}".format(displayThread), img]
+					update_menu = True
+				elif displayThread.P.isUpdated("output_Text"):
+					text = displayThread.get_output_text()
+					thread_output = [text]
+					update_menu = True
 			if update_menu:
 				self.status()	
 				self.print_menu() #Add the menu into the buffer array
 				self.gui.setOutputPane(thread_output)
-				thread_output = []
-				update_menu = False
+			thread_output = []
+			update_menu = False
 		print("")
 		self.stop() #Turn off the listener
 		return self.lines[-1] #Otherwise nothing
