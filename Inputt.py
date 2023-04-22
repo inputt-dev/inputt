@@ -9,6 +9,7 @@ import math
 from PIL import Image
 import os
 import sys
+from datetime import date
 
 class Inputt():
 	#just like input, but non blocking and flags keystrokes
@@ -29,6 +30,7 @@ class Inputt():
 		self.menuSelections = [] #A list of all menu options available, set up by the print menu function
 		self.gui = GUIThread("GUI", []) #Start running the GUI, and update it as necessary
 		self.set_prompt("") #The default prompt
+		self.log = ""
 
 	def startGui(self):
 		self.gui.start()
@@ -224,7 +226,7 @@ class Inputt():
 		self.gui.setOutputPane(["Viewing {}".format(title), "Enunmeration selection {}".format(self.menuLevel)])
 		#self.gui.updatingBuffer(False) #We know this thread is done updating the buffer
 		selection = self.nextLine() #And then get the users selection
-		ret = self.process_menulevel()
+		ret = self.outputt()[0] #Because outputt always returns a list for drawing to the output section
 		if ret[0] == 'Returning to menu level':
 			return False
 		return ret
@@ -320,6 +322,7 @@ class Inputt():
 		self.set_prompt("Select Option(1-{})".format(oneTouchCount))
 		print(self.promptText)
 		self.gui.updatingBuffer(False) #Done writing the menu
+		
 	def stop_threads(self):
 		#Shut down the running threads
 		runningThreads = threads.iterable()
@@ -327,7 +330,7 @@ class Inputt():
 			rt.stop()
 
 
-	def process_menulevel(self):
+	def outputt(self):
 		self.gui.updatingBuffer(bufferUpdating = True) #Set the drawing and buffer locks
 		#Lets get the last line entered by the user
 		lastLineEntered = self.lines[-1]
@@ -356,7 +359,6 @@ class Inputt():
 		return self.functionReturn #True if a function ran, false otherwise
 	
 	def nextLine(self): #returns a string the user typed or false if still checking
-		#Lets reset the interface window to sync it with the user input
 		#Flag the prompt to draw the gui screen
 		if self.enterLine: #The enter key was pressed, get the last line recorded
 			return self.lines[-1]
@@ -436,6 +438,7 @@ class Inputt():
 		ret = None
 		self.oneTouchKeys = []
 		self.output = ""
+		self.print_menu()
 		while invalid:
 			self.set_prompt("{}({}). {}-{}".format(promptText,current, min, max))
 			userInput = self.nextLine()
@@ -451,7 +454,34 @@ class Inputt():
 				self.set_prompt("{} is not an integer.".format(userInput))
 		self.set_prompt("")
 		return ret
+	
+	def get_date(self, promptText, min, max, current):
+		invalid = True
+		ret = None
+		self.oneTouchKeys = []
+		self.output = ""
+		min_month = 1
+		max_month = 12
+		min_year = min.year
+		max_year = max.year
+		min_day = 1
+		max_day = 31
+		date_confirmation = []
+		day = self.getInteger(f"Enter Day {min_day} - {max_day}", min_day, max_day,1)
+		date_confirmation.append(f"Day selected {day}")
+		self.gui.setOutputPane(date_confirmation)
 
+		month = self.getInteger(f"Enter Month {min_month} - {max_month}", min_month, max_month, 1)
+		date_confirmation.append(f"Month selected {month}")
+		self.gui.setOutputPane(date_confirmation)
+
+		self.set_prompt(f"Enter Year {min_year} - {max_year}")
+		year = self.getInteger(f"Enter Year {min_year} - {max_year}", min_year, max_year, min_year)
+
+		date_confirmation.append(date(year,month,day))
+		self.gui.setOutputPane(date_confirmation)
+		return date(year,month,day)
+			
 	#Change the prompt and user input
 	def set_prompt(self, promptText):
 		self.promptText = promptText + "> "
@@ -497,6 +527,9 @@ class Inputt():
 
 	def getlastOutput(self):
 		return self.gui.outputList
+	
+	def log(self, entry):
+		self.log += entry + "\n"
 	
 	"""
 	Status updates the menu system showing relevant & concise state data to the user

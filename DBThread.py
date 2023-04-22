@@ -64,7 +64,7 @@ class DB():
 				df = db.execute(sql_query, values)
 				df = values
 			self.results.update({self.commands_Completed:df})
-			print("{}:{}{} {}".format(self.commands_Completed, sql_query,values, df))
+			#print("{}:{}{} {}".format(self.commands_Completed, sql_query,values, df))
 			self.commands_Completed += 1
 		self.commands = []
 		db.commit()
