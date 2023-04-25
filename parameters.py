@@ -96,12 +96,10 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 		ret += "\n"
 		return ret
 
-	def iterable(self): #return the next parameter, return False at the end, then reset it
-		ret = []
+	def iterable(self): #generator function to yield a list of the values only not the dictionary or the extra information in the tuple
 		for name, values in self.p.items():
 			if values[0] is not None:
-				ret.append(values[0])
-		return ret
+				yield values[0]
 
 	def toList(self): #Return a list of all the items in the Parameters
 		ret = []
@@ -115,6 +113,12 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 		except:
 			ret = False
 		return ret
+	
+	def isAnyUpdated(self):
+		for (name, value) in self.p:
+			if self.isUpdated(name):
+				return True
+		return False
 	
 	def parameter_processed(self, key):
 		try:

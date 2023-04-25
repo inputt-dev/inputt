@@ -3,7 +3,7 @@ import time
 from parameters import Parameters
 from guiThread import GUIThread
 import numpy as np
-from Globals import Globals
+from Globals import Globals, status
 from workerthreads import threads
 import math
 from PIL import Image
@@ -225,10 +225,8 @@ class Inputt():
 		title = self.getTitle()
 		self.gui.setOutputPane(["Viewing {}".format(title), "Enunmeration selection {}".format(self.menuLevel)])
 		#self.gui.updatingBuffer(False) #We know this thread is done updating the buffer
-		selection = self.nextLine() #And then get the users selection
+		selection = self.next_line() #And then get the users selection
 		ret = self.outputt()[0] #Because outputt always returns a list for drawing to the output section
-		if ret[0] == 'Returning to menu level':
-			return False
 		return ret
 
 	def goUpOneLevel(self):
@@ -239,7 +237,7 @@ class Inputt():
 	
 	def Escape(self): #The all important escape key, go up one menu level for everything, defined in inputt
 		self.goUpOneLevel()
-		ret = ["Returning to menu level".format(self.menuLevel)]
+		ret = [False]
 		#Need to check the menu level and activate outputvisual for running threads, if we go to the level that spawned the thread
 		return ret
 	
@@ -354,20 +352,19 @@ class Inputt():
 			self.print_menu() #Add the menu into the buffer array
 			#Set the window size based on the output size and write in the output from the menu function
 			self.gui.setOutputPane(self.functionReturn)
-		self.enterLine = False	#Get ready for a nextline
+		self.enterLine = False	#Get ready for a next_line
 		self.gui.updatingBuffer(False) #Open for screen drawing now
 		return self.functionReturn #True if a function ran, false otherwise
 	
-	def nextLine(self): #returns a string the user typed or false if still checking
+	def next_line(self): #returns a string the user typed or false if still checking
 		#Flag the prompt to draw the gui screen
 		if self.enterLine: #The enter key was pressed, get the last line recorded
 			return self.lines[-1]
 		self.start() #Start listening for keystrokes
 		#Lets see if any running thread started from this current menu level, if so show the the threads output in the output pane
-		runningThreads = threads.iterable()
 		images = []
 		displayThread = False #Presume no thread to displaynd
-		for rt in runningThreads:
+		for rt in threads.iterable():
 			threadMenuLevel = rt.P.get("Menu Level")
 			if threadMenuLevel == self.menuLevel:
 				displayThread = rt #We have a thread created at this menu level, we will display it in the output pane
@@ -380,12 +377,6 @@ class Inputt():
 		update_menu = False
 		thread_output = []
 		while self.enterLine == False: #Wait for the user to type a selection
-			#Check if any thread is updated and we're at the root menu which will show running threads
-			for rt in runningThreads:
-				if self.menuLevel == []:
-					thread_output.append(str(rt))
-				if rt.P.isUpdated("output_Text"):
-					update_menu = True
 			if displayThread:
 				if displayThread.P.isUpdated("outputImage"):
 					img = displayThread.getOutputImage()
@@ -395,10 +386,12 @@ class Inputt():
 					text = displayThread.get_output_text()
 					thread_output = [text]
 					update_menu = True
+
 			if update_menu:
-				self.status()	
+				status()	
 				self.print_menu() #Add the menu into the buffer array
 				self.gui.setOutputPane(thread_output)
+
 			thread_output = []
 			update_menu = False
 		print("")
@@ -425,7 +418,7 @@ class Inputt():
 
 	def getString(self, promptText):
 		self.updatePrompt(promptText)
-		ret = self.nextLine()
+		ret = self.next_line()
 		return ret
 	def getColor(self, defaults):
 		(dR,dG,dB) = defaults
@@ -441,7 +434,7 @@ class Inputt():
 		self.print_menu()
 		while invalid:
 			self.set_prompt("{}({}). {}-{}".format(promptText,current, min, max))
-			userInput = self.nextLine()
+			userInput = self.next_line()
 			try:
 				ret = int(userInput)
 				if ret < min:
@@ -451,6 +444,9 @@ class Inputt():
 				else:
 					invalid = False
 			except Exception as e:
+				if userInput == 'Escape':
+					ret = False
+					invalid = False
 				self.set_prompt("{} is not an integer.".format(userInput))
 		self.set_prompt("")
 		return ret
@@ -458,29 +454,26 @@ class Inputt():
 	def get_date(self, promptText, min, max, current):
 		invalid = True
 		ret = None
-		self.oneTouchKeys = []
-		self.output = ""
 		min_month = 1
 		max_month = 12
 		min_year = min.year
 		max_year = max.year
 		min_day = 1
 		max_day = 31
-		date_confirmation = []
 		day = self.getInteger(f"Enter Day {min_day} - {max_day}", min_day, max_day,1)
-		date_confirmation.append(f"Day selected {day}")
-		self.gui.setOutputPane(date_confirmation)
-
-		month = self.getInteger(f"Enter Month {min_month} - {max_month}", min_month, max_month, 1)
-		date_confirmation.append(f"Month selected {month}")
-		self.gui.setOutputPane(date_confirmation)
-
-		self.set_prompt(f"Enter Year {min_year} - {max_year}")
-		year = self.getInteger(f"Enter Year {min_year} - {max_year}", min_year, max_year, min_year)
-
-		date_confirmation.append(date(year,month,day))
-		self.gui.setOutputPane(date_confirmation)
-		return date(year,month,day)
+		if day:
+			month = self.getInteger(f"Enter Month {min_month} - {max_month}", min_month, max_month, 1)
+			if month:
+				year = self.getInteger(f"Enter Year {min_year} - {max_year}", min_year, max_year, min_year)
+				if year:
+					ret = date(year,month,day)
+				else:
+					ret = False
+			else:
+				ret = False
+		else:
+			ret = False
+		return ret
 			
 	#Change the prompt and user input
 	def set_prompt(self, promptText):
@@ -503,7 +496,7 @@ class Inputt():
 
 	def confirmAction(self, confirmText):
 		self.updatePrompt("Press Enter to confirm {}".format(confirmText))
-		line = self.nextLine()
+		line = self.next_line()
 		if line == "":
 			return True
 		return False
@@ -518,7 +511,7 @@ class Inputt():
 			self.updatePrompt("Press any key to continue")
 		else:
 			self.updatePrompt(message)
-		anykey = self.nextLine()
+		anykey = self.next_line()
 		self.oneTouchKeys = [] #Reset them so it doesnt keep doing anykey
 		return anykey #Might be useful to know which key was pressed
 	
@@ -531,38 +524,4 @@ class Inputt():
 	def log(self, entry):
 		self.log += entry + "\n"
 	
-	"""
-	Status updates the menu system showing relevant & concise state data to the user
-	"""
-	def status(self):
-		db = Globals.get("db")
-		self.updateMenuItem([], "Database settings-{}".format(len(db.commands)))
 
-		try:
-			Inserting = threads.get("Insert")
-			if Inserting.stopped() == True:
-				onoff = "OFF"
-			else:
-				onoff = "ON"
-			self.updateMenuItem(['2'], "Inserting is {} {}".format(onoff,Inserting.count))
-		except Exception as e:
-			self.updateMenuItem(['2'], "Inserting is OFF 0")
-
-		try:
-			Updating = threads.get("Update")
-			if Updating.stopped() == True:
-				onoff = "OFF"
-			else:
-				onoff = "ON"
-			self.updateMenuItem(['3'], "Updating is {} {}".format(onoff,Inserting.count))
-		except Exception as e:
-			self.updateMenuItem(['3'], "Updating is OFF 0")		
-		try:
-			Deleting = threads.get("Delete")
-			if Deleting.stopped() == True:
-				onoff = "OFF"
-			else:
-				onoff = "ON"
-			self.updateMenuItem(['4'], "Deleting is {} {}".format(onoff,Inserting.count))
-		except Exception as e:
-			self.updateMenuItem(['4'], "Deleting is OFF 0")

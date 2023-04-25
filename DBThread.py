@@ -91,7 +91,7 @@ class DB():
 		return values
 	
 	def get_random_record(self):
-		sql = "SELECT * FROM TEST ORDER BY RANDOM() LIMIT 1 "
+		sql = "SELECT * FROM TEST ORDER BY RANDOM() LIMIT 1;"
 		result_index = self.addCommand(sql)
 		df = self.get_result(result_index)
 		t= tuple(df.itertuples(index=False, name=None))
