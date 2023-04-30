@@ -2,6 +2,7 @@ from workerthreads import workerThread
 import pandas as pd
 import sqlite3
 import random
+import re
 
 """
 DBThread
@@ -14,7 +15,28 @@ class DB():
 		self.commands = [] #[sql command]
 		self.results = {} #{index: return result}
 		self.commands_Completed = 0
-		self.DB_File_Path = args[0]
+		self.DB_File_Path = args[1]
+
+		self.DB_Create_SQL = args[2]
+		with open(self.DB_Create_SQL, 'r') as sql_file:
+			sql_script = sql_file.read()
+		#sql_script = re.sub(r"[\n\t]*", "", sql_script)
+		pattern = '(CREATE\s*TABLE\s*)(\w*)'
+		tables = []
+
+		for match in re.finditer(pattern, sql_script):
+			tables.append(match.group(2))
+		#Now get the tables in the database
+		db = sqlite3.connect(self.DB_File_Path)
+		sql_query = "SELECT name FROM sqlite_master  WHERE type='table';"
+		df = pd.read_sql_query(sql_query, db)['name']
+
+		if df.tolist() != tables:
+				cursor = db.cursor()
+				cursor.executescript(sql_script)
+				db.commit()
+		db.close()
+
 		self.running = True
 		self.waiting_cycles = 0
 		self.update_buffer = {}

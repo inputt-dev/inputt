@@ -416,10 +416,13 @@ class Inputt():
 		fileSelected = Root_Path + fileSelected[0]
 		return fileSelected
 
-	def getString(self, promptText):
-		self.updatePrompt(promptText)
+	def getString(self, promptText, default):
+		self.updatePrompt(f'promptText + ({default})')
 		ret = self.next_line()
+		if ret == "":
+			ret = default
 		return ret
+	
 	def getColor(self, defaults):
 		(dR,dG,dB) = defaults
 		red = self.getInteger("red value", 0, 255, dR)
