@@ -5,6 +5,8 @@ to change, record, validate input
 
 Change to a pandas dataframe, for each parameters, parameters.
 """
+import pandas as pd
+
 class Parameters(): #Holds values that define the dimensions and properties of anything, allows updates and saves old values
 	def __init__(self, dict):
 		self.p = dict
@@ -101,6 +103,11 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 			if values[0] is not None:
 				yield values[0]
 
+	def iterable_keys(self): #generator function to yield the keys
+		for name, values in self.p.items():
+			if values[0] is not None:
+				yield values[0]
+
 	def toList(self): #Return a list of all the items in the Parameters
 		ret = []
 		for name, values in self.p.items():
@@ -128,3 +135,12 @@ class Parameters(): #Holds values that define the dimensions and properties of a
 			ret = False
 		return ret		
 
+	def to_tuple(self):
+		ret = []
+		for name, values in self.p.items():
+			desc = values[1]
+			value = values[0]
+			ret.append(value)
+
+		ret = tuple(ret)
+		return ret

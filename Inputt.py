@@ -247,7 +247,7 @@ class Inputt():
 		self.gui.clearText()
 		escapeOption = self.menuLevel.copy()
 		escapeOption.append("Escape") #So hitting the Escape key brings us one menu level, escaping up
-		self.add_menu_item(escapeOption,"Go up one level", self.Escape) #Put in the 
+		self.add_menu_item(escapeOption,"Back", self.Escape) #Put in the 
 		oneTouchCount = 0 #If its above 10 we need to cancel one touch keys
 		y = 1 #Top row is for menu id status, count the rows needed to display the menu
 		title = str(self.menuLevel) + ": " + str(self.menuItems[tuple(self.menuLevel)][0]) #Level: Level's name
@@ -316,7 +316,6 @@ class Inputt():
 		if oneTouchCount > 10: #Cant type 16 for instance without onetouching 1 first so we need to disable it
 			self.oneTouchKeys = []
 		#Add the prompt to the buffer
-		#self.gui.addToBuffer(0, y + 1, "Select Option(1-{})".format(oneTouchCount))
 		self.set_prompt("Select Option(1-{})".format(oneTouchCount))
 		print(self.promptText)
 		self.gui.updatingBuffer(False) #Done writing the menu
@@ -417,7 +416,9 @@ class Inputt():
 		return fileSelected
 
 	def getString(self, promptText, default):
-		self.updatePrompt(f'promptText + ({default})')
+		self.oneTouchKeys = []
+		self.output = ["Enter book name"]
+		self.set_prompt(f'{promptText}({default})')
 		ret = self.next_line()
 		if ret == "":
 			ret = default

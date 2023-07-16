@@ -62,8 +62,7 @@ class DB():
 	
 	#Get the result of the sql command via index number, but may need to wait until its available.
 	def result(self, index):
-		while self.commands_Completed < index:
-			pass
+		self.flush_command_buffer()
 		ret = self.results[index]
 		del self.results[index]
 		return ret
@@ -72,25 +71,28 @@ class DB():
 	#Store the results in self.results dictionary
 	def flush_command_buffer(self):
 		if len(self.commands) == 0:
-			return
+			return False
 		while self.processing(): 
 			pass
 
 		self.processing(True)
-		db = sqlite3.connect(self.DB_File_Path)
-		for (sql_query,values) in self.commands:
-			type = sql_query.split(" ")[0]
-			if type == "SELECT":
-				df = pd.read_sql_query(sql_query, db)
-			elif type == "INSERT" or type == "UPDATE" or type == "DELETE":
-				df = db.execute(sql_query, values)
-				df = values
-			self.results.update({self.commands_Completed:df})
-			#print("{}:{}{} {}".format(self.commands_Completed, sql_query,values, df))
-			self.commands_Completed += 1
-		self.commands = []
-		db.commit()
-		db.close()
+		try :
+			db = sqlite3.connect(self.DB_File_Path)
+			for (sql_query,values) in self.commands:
+				type = sql_query.split(" ")[0]
+				if type == "SELECT":
+					df = pd.read_sql_query(sql_query, db)
+				elif type == "INSERT" or type == "UPDATE" or type == "DELETE":
+					df = db.execute(sql_query, values)
+					df = values
+				self.results.update({self.commands_Completed:df})
+				#print("{}:{}{} {}".format(self.commands_Completed, sql_query,values, df))
+				self.commands_Completed += 1
+			self.commands = []
+			db.commit()
+			db.close()
+		except Exception as e:
+			print(e)
 		self.processing(False)
 	
 	def select_all(self):
