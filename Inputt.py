@@ -223,7 +223,7 @@ class Inputt():
 		self.output = "" #Prep the indicator variables to accept new input and prepare to select from the list
 		self.print_menu() #Display it and set one touch keys, if less than 10 items being displayed
 		title = self.getTitle()
-		self.gui.setOutputPane(["Viewing {}".format(title), "Enunmeration selection {}".format(self.menuLevel)])
+		#self.gui.setOutputPane(["Viewing {}".format(title), "Enunmeration selection {}".format(self.menuLevel)])
 		#self.gui.updatingBuffer(False) #We know this thread is done updating the buffer
 		selection = self.next_line() #And then get the users selection
 		ret = self.outputt()[0] #Because outputt always returns a list for drawing to the output section
@@ -328,6 +328,8 @@ class Inputt():
 
 
 	def outputt(self):
+		"""
+		"""
 		self.gui.updatingBuffer(bufferUpdating = True) #Set the drawing and buffer locks
 		#Lets get the last line entered by the user
 		lastLineEntered = self.lines[-1]
@@ -341,18 +343,20 @@ class Inputt():
 		#Do the escape function if escape is pressed, later try to handle this automatically as part of the function execution
 		if lastLineEntered == "Escape":
 			func = self.Escape
-
-		if func != None: #run the function if supplied
-			self.functionReturn = func()
-			#Clear the screen to put in the new output and prep it for the next menu printing
-			while self.gui.drawingScreen():
-				pass
-			self.gui.clearText() #Prep the text array for a new set of characters
-			self.print_menu() #Add the menu into the buffer array
-			#Set the window size based on the output size and write in the output from the menu function
-			self.gui.setOutputPane(self.functionReturn)
-		self.enterLine = False	#Get ready for a next_line
-		self.gui.updatingBuffer(False) #Open for screen drawing now
+		try:
+			if func != None: #run the function if supplied
+				self.functionReturn = func()
+				#Clear the screen to put in the new output and prep it for the next menu printing
+				while self.gui.drawingScreen():
+					pass
+				self.gui.clearText() #Prep the text array for a new set of characters
+				self.print_menu() #Add the menu into the buffer array
+				#Set the window size based on the output size and write in the output from the menu function
+				self.gui.setOutputPane(self.functionReturn)
+			self.enterLine = False	#Get ready for a next_line
+			self.gui.updatingBuffer(False) #Open for screen drawing now
+		except Exception as e:
+			return [e]
 		return self.functionReturn #True if a function ran, false otherwise
 	
 	def next_line(self): #returns a string the user typed or false if still checking
@@ -527,5 +531,16 @@ class Inputt():
 	
 	def log(self, entry):
 		self.log += entry + "\n"
+
+	def set_menu_level(self, level):
+		#Check to see if its a valid menu level
+		#set menu level and print the menu
+		level_t = tuple(level)
+		for item in self.menuItems.items():
+			(name, func) = item
+			if name == level_t:
+				self.menuLevel = level
+				return True
+		return False
 	
 
